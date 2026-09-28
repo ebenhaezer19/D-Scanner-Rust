@@ -1,41 +1,43 @@
-# D-Scanner Rust — Testing Guide (M1)
-**Repo**: https://github.com/ebenhaezer19/D-Scanner-Rust  
-**Branch**: `main`  
-**Status**: M1 Complete — core pipeline, DNS, HTTP, credential engine
+# D-Scanner Rust - Testing Guide (M1)
+
+Repo: https://github.com/ebenhaezer19/D-Scanner-Rust  
+Branch: main  
+Status: M1 Complete - core pipeline, DNS, HTTP fetch, credential engine
 
 ---
 
-## Setup (Linux/Debian — sama dengan VPS owner)
+## Setup (Linux / Debian - same as production VPS)
 
 ```bash
-# 1. Install Rust
+# Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
 
-# 2. Clone repo
+# Clone repo
 git clone https://github.com/ebenhaezer19/D-Scanner-Rust.git
 cd D-Scanner-Rust
 
-# 3. Build
+# Build release binary
 cargo build --release
 
-# Binary ada di:
+# Binary location
 ./target/release/dreks
 ```
 
-> ⚠️ Tidak perlu MSYS2/MinGW di Linux — langsung `cargo build` tanpa setup tambahan.
+Note: No MSYS2 or MinGW needed on Linux. Just `cargo build` directly.
 
 ---
 
-## Test Cases yang Perlu Diverifikasi
+## Test Cases
 
-### ✅ TC-01: Binary Berjalan + Help
+### TC-01: Binary and Help Output
 
 ```bash
 ./target/release/dreks --help
 ```
 
-**Expected**:
+Expected output:
+
 ```
 High-performance web scanner
 
@@ -45,84 +47,91 @@ Options:
   -i, --input <INPUT>              [default: domains.txt]
   -c, --concurrency <CONCURRENCY>  [default: 2000]
       --dns-servers <DNS_SERVERS>  [default: 8.8.8.8,1.1.1.1,9.9.9.9,8.8.4.4]
-  ...
+      --timeout <TIMEOUT>          [default: 10]
+      --max-body <MAX_BODY>        [default: 1048576]
+      --max-js <MAX_JS>            [default: 3]
+  -o, --output <OUTPUT>
+      --log-level <LOG_LEVEL>      [default: info]
+      --no-raw-dns
+  -h, --help
+  -V, --version
 ```
 
 ---
 
-### ✅ TC-02: Streaming Domain Input (Memory Test)
+### TC-02: Streaming Input and Memory Usage
 
 ```bash
-# Buat domain list kecil
 echo -e "example.com\ngoogle.com\nhttpbin.org\ngithub.com\nstackoverflow.com" > test5.txt
 
-# Run dengan log level debug
 ./target/release/dreks --input test5.txt --concurrency 5 --timeout 5 --log-level debug
 ```
 
-**Expected**:
-- Log: `streaming domains from: test5.txt`
-- Log: `5 queued, 0 skipped`
-- DNS queries terlihat di log untuk setiap domain
-- **RAM usage harus < 50MB** — cek dengan `htop` atau `ps aux`
+Expected:
+- Log shows: `streaming domains from: test5.txt`
+- Log shows: `5 queued, 0 skipped`
+- DNS queries visible in debug log for each domain
+- RAM usage below 50 MB (check with `htop` or `ps aux`)
 
 ---
 
-### ✅ TC-03: Raw DNS Resolver
+### TC-03: Raw DNS Resolver
 
 ```bash
-# Test dengan domain yang pasti ada dan pasti NXDOMAIN
-echo -e "google.com\nthis-domain-definitely-does-not-exist-xyz123.com" > test_dns.txt
+echo -e "google.com\nthis-domain-xyz999-does-not-exist.com" > test_dns.txt
 
 ./target/release/dreks --input test_dns.txt --concurrency 2 --timeout 3 --log-level debug
 ```
 
-**Expected**:
-- `google.com` → DNS resolved, lanjut ke fetch
-- `this-domain-*.com` → DNS NXDOMAIN, di-skip (tidak di-fetch)
-- Log menunjukkan DNS queries ke `8.8.8.8`/`1.1.1.1` via UDP
+Expected:
+- `google.com` resolves, proceeds to HTTP fetch
+- `this-domain-*.com` hits NXDOMAIN, gets skipped without fetching
+- Log shows DNS queries going to `8.8.8.8` and `1.1.1.1` via UDP
 
 ---
 
-### ✅ TC-04: Credential Detection
+### TC-04: Credential Detection
 
 ```bash
-# Buat file HTML dengan fake credential
-cat > /tmp/test_cred.html << 'EOF'
+mkdir -p /tmp/testsite
+
+cat > /tmp/testsite/index.html << 'EOF'
 <html><body>
 <script>
-const API_KEY = "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGH";
+const OPENAI_KEY = "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGH";
 const STRIPE_KEY = "sk_live_abcdefghijklmnopqrstuvwxyz123456";
 const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";
 </script>
 </body></html>
 EOF
 
-# Test credential scanner langsung (akan dipakai saat fetch HTML)
-# Untuk sekarang: scan localhost jika ada web server
-python3 -m http.server 8080 --directory /tmp &
-echo "localhost:8080/test_cred.html" > test_cred.txt
+python3 -m http.server 8080 --directory /tmp/testsite &
+sleep 1
+
+echo "http://localhost:8080" > test_cred.txt
 ./target/release/dreks --input test_cred.txt --concurrency 1 --timeout 5 --log-level info
+
 kill %1
 ```
 
-**Expected output** (JSONL per hit):
-```json
+Expected output (one JSON line per hit, printed to stdout):
+
+```
 {"target":"http://localhost:8080","provider":"openai","value":"sk-proj-...","confidence":"high","source":"Html","found_at":"..."}
 {"target":"http://localhost:8080","provider":"stripe","value":"sk_live_...","confidence":"high","source":"Html","found_at":"..."}
 {"target":"http://localhost:8080","provider":"aws","value":"AKIAIOSFODNN7EXAMPLE","confidence":"high","source":"Html","found_at":"..."}
 ```
 
+This is the most important test case. If credential detection does not work, M1 is not complete.
+
 ---
 
-### ✅ TC-05: Concurrency + Throughput Test
+### TC-05: Concurrency and Throughput
 
 ```bash
-# Generate 1000 domain list
 python3 -c "
 import random, string
 domains = ['google.com', 'github.com', 'cloudflare.com', 'amazon.com']
-# Mix dengan random invalid domains
 for i in range(996):
     r = ''.join(random.choices(string.ascii_lowercase, k=10))
     domains.append(f'{r}.com')
@@ -130,82 +139,82 @@ random.shuffle(domains)
 print('\n'.join(domains))
 " > test1000.txt
 
-# Run dengan concurrency tinggi
 time ./target/release/dreks --input test1000.txt --concurrency 500 --timeout 5 --log-level info
 ```
 
-**Expected**:
-- Selesai dalam < 30 detik untuk 1000 domain
-- Progress log setiap 10 detik
-- Rate harus > 50 URL/s
+Expected:
+- Completes in under 30 seconds for 1000 domains
+- Progress log printed every 10 seconds
+- Rate above 50 URLs per second
 
 ---
 
-### ✅ TC-06: Stdin Input
+### TC-06: Stdin Input
 
 ```bash
 cat test5.txt | ./target/release/dreks --input - --concurrency 5 --timeout 5
 ```
 
-**Expected**: Sama dengan TC-02, baca dari stdin
+Expected: Same behavior as TC-02, reading from stdin instead of file.
 
 ---
 
-### ✅ TC-07: Output ke File JSONL
+### TC-07: Output to File
 
 ```bash
 ./target/release/dreks --input test5.txt --concurrency 5 --timeout 5 --output /tmp/hits.jsonl
 cat /tmp/hits.jsonl
 ```
 
-**Expected**: File berisi hit dalam format JSONL (atau kosong jika tidak ada credential di target)
+Expected: File `/tmp/hits.jsonl` is created. Each line is a valid JSON object. File may be empty if no credentials are found on the test domains.
 
 ---
 
-### ✅ TC-08: Memory Usage Besar (Streaming Test)
+### TC-08: Large Input Memory Test
 
 ```bash
-# Generate 100K domain list
 python3 -c "
 for i in range(100000):
-    print(f'host{i}.example-test-nonexistent.com')
+    print(f'host{i}.nonexistent-test-domain-xyz.com')
 " > test100k.txt
 
-# Monitor RAM selama scan
 /usr/bin/time -v ./target/release/dreks --input test100k.txt --concurrency 1000 --timeout 3 --log-level warn
 ```
 
-**Expected**:
-- `Maximum resident set size` < 500MB (vs Go yang bisa 2-4GB untuk load 100K domains)
-- Tidak ada OOM kill
+Expected:
+- `Maximum resident set size` in `/usr/bin/time` output is below 500 MB
+- No OOM kill
+- All 100K domains are processed via streaming without loading all into RAM
 
 ---
 
-## Bug Report Template
+## Bug Report Format
 
-Jika ada issue, report dengan format berikut:
+If you find an issue, report it using this format:
 
 ```
-TC: [nomor test case]
-OS: [Debian 12 / Ubuntu 22.04 / dll]
-Rust version: [output rustc --version]
-Command: [exact command yang dijalankan]
-Expected: [apa yang diharapkan]
-Actual: [apa yang terjadi]
-Log output: [paste log relevan]
+TC: [test case number]
+OS: [e.g. Debian 12]
+Rust version: [output of: rustc --version]
+Command: [exact command run]
+Expected: [what should happen]
+Actual: [what actually happened]
+Log: [paste relevant log lines]
 ```
 
 ---
 
-## Known Issues / Tidak Perlu Di-report
+## Known Non-Issues
 
-- `warning: field 0 is never read` — normal, struct akan dipakai di M2
-- `warning: struct ScanResult is never constructed` — normal, dipakai di M2
-- Exit code 1 dari PowerShell redirect (`2>&1`) — ini PowerShell behavior, bukan error Rust
+The following warnings appear during build and can be ignored:
+
+- `warning: field 0 is never read` - DnsResult fields will be used in M2
+- `warning: struct ScanResult is never constructed` - used in M2
+- `warning: enum ScanStatus is never used` - used in M2
 
 ---
 
-## Kontak
+## Contact
 
 Repo: https://github.com/ebenhaezer19/D-Scanner-Rust  
-Issues: Buka GitHub Issue dengan template di atas
+Submit issues via GitHub Issues with the bug report format above.
