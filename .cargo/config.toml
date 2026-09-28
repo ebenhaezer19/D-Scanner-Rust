@@ -1,0 +1,21 @@
+# .cargo/config.toml
+# Rust build configuration
+
+# Fix: ring crate fails on paths with spaces ("FILE KU").
+# Move build artifacts to path without spaces.
+[build]
+target-dir = "C:/dreks-target"
+
+# Windows dev: MinGW GNU toolchain (MSYS2)
+[target.x86_64-pc-windows-gnu]
+linker = "C:/msys64/mingw64/bin/gcc.exe"
+ar = "C:/msys64/mingw64/bin/ar.exe"
+
+# VPS deploy: Debian 12 x86_64 musl (static binary, no libc dep)
+[target.x86_64-unknown-linux-musl]
+linker = "x86_64-linux-musl-gcc"
+
+# CC env vars needed by ring/cc crate on GNU target
+[env]
+CC_x86_64_pc_windows_gnu = "C:/msys64/mingw64/bin/gcc.exe"
+AR_x86_64_pc_windows_gnu = "C:/msys64/mingw64/bin/ar.exe"

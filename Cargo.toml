@@ -1,0 +1,77 @@
+[package]
+name = "dreks-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["D-Scanner Team"]
+description = "High-performance web scanner engine — Rust rewrite"
+
+[[bin]]
+name = "dreks"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# HTTP client — cookie store, rustls (no OpenSSL dep for easy cross-compile)
+reqwest = { version = "0.12", default-features = false, features = [
+    "cookies",
+    "json",
+    "rustls-tls",
+    "gzip",
+    "brotli",
+    "stream",
+] }
+
+# DNS — hickory (pure Rust, no system resolver dep)
+hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
+hickory-proto = "0.24"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTML parsing
+scraper = "0.20"
+
+# URL handling
+url = "2"
+
+# Regex (for credential matching)
+regex = "1"
+once_cell = "1"  # lazy static regex compilation
+
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Concurrency utilities
+dashmap = "6"        # concurrent hashmap (DNS cache)
+async-channel = "2"  # bounded async channels
+tokio-util = { version = "0.7", features = ["io", "codec"] }
+bytes = "1"
+
+# Misc
+rand = "0.8"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+indicatif = "0.17"  # progress bar
+
+[profile.release]
+opt-level = 3
+lto = true           # link-time optimization (smaller + faster binary)
+codegen-units = 1    # slower compile, faster runtime
+strip = true         # strip debug symbols (smaller binary for VPS deploy)
+panic = "abort"      # smaller binary
+
+[profile.dev]
+opt-level = 0
+debug = true
