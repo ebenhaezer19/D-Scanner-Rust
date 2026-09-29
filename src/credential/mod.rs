@@ -49,8 +49,9 @@ static REGISTRY: Lazy<Vec<Box<dyn CredentialProvider>>> = Lazy::new(|| {
     ]
 });
 
-/// Scan a text blob with all providers. Returns all hits found.
-pub fn scan_text(text: &str, target_url: &str, source: HitSource) -> Vec<Hit> {
+/// Scan a text blob with all providers. Returns hits at or above min_confidence.
+/// min_confidence: "low" | "medium" | "high"  (default "medium")
+pub fn scan_text(text: &str, target_url: &str, source: HitSource, min_confidence: &str) -> Vec<Hit> {
     let mut hits = Vec::new();
 
     for provider in REGISTRY.iter() {
@@ -63,8 +64,13 @@ pub fn scan_text(text: &str, target_url: &str, source: HitSource) -> Vec<Hit> {
 
             let confidence = provider.confidence(candidate);
 
-            // Skip Low confidence — likely false positive (CSS class names, etc.)
-            if matches!(confidence, Confidence::Low) {
+            // Apply confidence filter
+            let passes = match min_confidence {
+                "high" => matches!(confidence, Confidence::High),
+                "low"  => true,
+                _      => !matches!(confidence, Confidence::Low), // default: medium+
+            };
+            if !passes {
                 continue;
             }
 

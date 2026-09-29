@@ -76,7 +76,7 @@ pub async fn fetch_target(
     let html = String::from_utf8_lossy(&body_bytes);
 
     // Scan HTML for credentials
-    let html_hits = credential::scan_text(&html, &target.url, crate::types::HitSource::Html);
+    let html_hits = credential::scan_text(&html, &target.url, crate::types::HitSource::Html, &config.min_confidence);
     hits.extend(html_hits);
 
     // ── JS fetching (tier-scored) ─────────────────────────────────────────────
@@ -87,7 +87,7 @@ pub async fn fetch_target(
                 let js_bytes = read_limited(js_resp, config.max_body_bytes).await?;
                 let js_text = String::from_utf8_lossy(&js_bytes);
                 let source = crate::types::HitSource::JsFile(js_url.clone());
-                let js_hits = credential::scan_text(&js_text, &target.url, source);
+                let js_hits = credential::scan_text(&js_text, &target.url, source, &config.min_confidence);
                 hits.extend(js_hits);
             }
             Err(e) => {

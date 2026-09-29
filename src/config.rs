@@ -44,6 +44,10 @@ pub struct Cli {
     /// Disable raw UDP DNS (fall back to system resolver)
     #[arg(long, default_value_t = false)]
     pub no_raw_dns: bool,
+
+    /// Minimum confidence level to output (low, medium, high)
+    #[arg(long, default_value = "medium")]
+    pub min_confidence: String,
 }
 
 /// Runtime config derived from CLI + any JSON overrides.
@@ -57,6 +61,7 @@ pub struct Config {
     pub max_js_per_domain: usize,
     pub output_path: Option<PathBuf>,
     pub raw_dns: bool,
+    pub min_confidence: String,
 }
 
 impl Config {
@@ -79,6 +84,7 @@ impl Config {
             max_js_per_domain: cli.max_js,
             output_path: cli.output.clone(),
             raw_dns: !cli.no_raw_dns,
+            min_confidence: cli.min_confidence.to_lowercase(),
         }
     }
 }
