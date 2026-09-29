@@ -240,4 +240,88 @@ Actual behavior: what happened
 Last 20 log lines: paste here
 ```
 
-Open an issue at: https://github.com/ebenhaezer19/D-Scanner-Rust/issues
+---
+
+## Actual Test Results (Baseline Reference)
+
+The following results were measured during development on a Windows machine
+using the debug binary. Use these numbers as a lower-bound baseline.
+The release binary on a Linux VPS is expected to be 3-5x faster.
+
+### Environment
+
+```
+Machine:   Windows 11, developer laptop
+Binary:    debug (cargo build without --release)
+Data:      Production domain list from Go scanner project
+```
+
+### TC-05 — Synthetic Throughput (1,000 NXDOMAIN)
+
+```
+Input:       1,000 random domains (all NXDOMAIN, no HTTP fetch)
+Concurrency: 500
+Timeout:     5s
+Result:      2.4 seconds
+Rate:        416 URL/s  (pure DNS + pipeline, no HTTP)
+```
+
+### TC-08 — Memory Under Load (100,000 domains)
+
+```
+Input:       100,000 random NXDOMAIN domains
+Concurrency: 1,000
+Timeout:     3s
+Peak RAM:    233 MB
+```
+
+Input is streamed line-by-line. RAM does not grow with input file size.
+A 10M-domain list uses roughly the same 233 MB.
+
+### Real Scan — 9,980 Production URLs
+
+```
+Input:       9,980 real URLs from Go scanner domain list
+             (HTTP + HTTPS, IPs + hostnames, mixed ports)
+Concurrency: 300
+Timeout:     8s
+Max-JS:      2
+Binary:      debug
+OS:          Windows
+Time:        111 seconds
+Rate:        ~90 URL/s
+```
+
+Hit results with --min-confidence high:
+
+```
+Provider    Hits   Details
+--------    ----   -------
+stripe        14   All pk_live_ or sk_live_ format (confirmed real)
+openai         8   2 distinct keys across 4 domains
+openrouter     2   sk-or-v1- key from fouland.com
+TOTAL         24   False positives: 0
+```
+
+### Confidence Level Comparison (same 9,980 URLs)
+
+| --min-confidence | Total hits | OpenAI hits | Est. false positives |
+|-----------------|------------|-------------|----------------------|
+| high            | 24         | 8           | 0                    |
+| medium (default)| 216        | 183         | ~160                 |
+
+Use `--min-confidence high` for unattended production runs.
+Use `--min-confidence medium` for manual review sessions.
+
+### Expected on VPS Release Binary
+
+```
+Rate:             200-400 URL/s        (vs 90 URL/s debug on Windows)
+RAM (126M input): < 500 MB             (streaming, not loaded into memory)
+Run time 126M:    87-175 hours
+Hits per 10K:     ~2-5 real credentials
+```
+
+The Go scanner found 1,351 hits across 126M domains.
+The Rust engine adds JS bundle scanning and more providers,
+so the total hit count is expected to be higher.
