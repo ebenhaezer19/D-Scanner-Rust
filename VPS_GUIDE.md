@@ -293,23 +293,30 @@ Time:        111 seconds
 Rate:        ~90 URL/s
 ```
 
-Hit results with --min-confidence high:
+Hit results with --min-confidence high (final verified run):
 
 ```
 Provider    Hits   Details
 --------    ----   -------
-stripe        14   All pk_live_ or sk_live_ format (confirmed real)
-openai         8   2 distinct keys across 4 domains
+stripe        29   All pk_live_, sk_live_, or pk_test_ format
+openai         9   2 distinct keys (mhaite.cl, cetepgroup.com, 73.104.243.90)
 openrouter     2   sk-or-v1- key from fouland.com
-TOTAL         24   False positives: 0
+resend         1   re_711d64... from canalterraviva.uol.com.br
+TOTAL         41   False positives: 0
 ```
+
+Notable finds:
+- stripe:     booking.doncaster.gov.uk, app.aiberry.io, admin.thetokencompany.com
+- openai:     sk-IHZOV5q... (Langflow API key mislabeled — M2 will handle this correctly)
+- openrouter: fouland.com
+- resend:     re_711d64dfc0be638e6da2ef6cb728fdbd (confirmed valid format)
 
 ### Confidence Level Comparison (same 9,980 URLs)
 
-| --min-confidence | Total hits | OpenAI hits | Est. false positives |
-|-----------------|------------|-------------|----------------------|
-| high            | 24         | 8           | 0                    |
-| medium (default)| 216        | 183         | ~160                 |
+| --min-confidence | Total hits | Est. false positives |
+|-----------------|------------|----------------------|
+| high            | 41         | 0                    |
+| medium (default)| 216        | ~160                 |
 
 Use `--min-confidence high` for unattended production runs.
 Use `--min-confidence medium` for manual review sessions.
@@ -317,10 +324,10 @@ Use `--min-confidence medium` for manual review sessions.
 ### Expected on VPS Release Binary
 
 ```
-Rate:             200-400 URL/s        (vs 90 URL/s debug on Windows)
+Rate:             200-400 URL/s        (vs ~45 URL/s debug on Windows)
 RAM (126M input): < 500 MB             (streaming, not loaded into memory)
 Run time 126M:    87-175 hours
-Hits per 10K:     ~2-5 real credentials
+Hits per 10K:     ~4 real credentials  (based on 41/9980)
 ```
 
 The Go scanner found 1,351 hits across 126M domains.
