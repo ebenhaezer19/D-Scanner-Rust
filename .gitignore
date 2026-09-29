@@ -4,6 +4,9 @@
 # Cargo lock for libraries (keep for binaries)
 # Cargo.lock
 
+# Local documentation (not for repo)
+GIT_GUIDE.md
+
 # Test input files
 test_domains.txt
 domains.txt

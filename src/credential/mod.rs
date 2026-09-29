@@ -61,11 +61,18 @@ pub fn scan_text(text: &str, target_url: &str, source: HitSource) -> Vec<Hit> {
                 continue;
             }
 
+            let confidence = provider.confidence(candidate);
+
+            // Skip Low confidence — likely false positive (CSS class names, etc.)
+            if matches!(confidence, Confidence::Low) {
+                continue;
+            }
+
             hits.push(Hit {
                 target: target_url.to_string(),
                 provider: provider.name().to_string(),
                 value: candidate.to_string(),
-                confidence: provider.confidence(candidate),
+                confidence,
                 source: source.clone(),
                 found_at: Utc::now(),
             });

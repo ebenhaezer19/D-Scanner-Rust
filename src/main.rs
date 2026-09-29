@@ -48,13 +48,30 @@ async fn main() -> anyhow::Result<()> {
     let (hit_tx, mut hit_rx) = tokio::sync::mpsc::channel::<types::Hit>(10_000);
 
     // Spawn hit writer
-    let _output_path = config.output_path.clone();
-    let _stats_writer = stats.clone();
+    let output_path = config.output_path.clone();
     let writer_task = tokio::spawn(async move {
+        // Open output file if specified, otherwise write to stdout
+        let mut file_writer: Option<tokio::io::BufWriter<tokio::fs::File>> = None;
+        if let Some(ref path) = output_path {
+            match tokio::fs::File::create(path).await {
+                Ok(f) => file_writer = Some(tokio::io::BufWriter::new(f)),
+                Err(e) => tracing::error!("cannot open output file {:?}: {e}", path),
+            }
+        }
+
+        use tokio::io::AsyncWriteExt;
         while let Some(hit) = hit_rx.recv().await {
-            let line = serde_json::to_string(&hit).unwrap_or_default();
-            println!("{}", line);
-            // TODO M4: also send to WebSocket controller
+            let mut line = serde_json::to_string(&hit).unwrap_or_default();
+            line.push('\n');
+            if let Some(ref mut fw) = file_writer {
+                let _ = fw.write_all(line.as_bytes()).await;
+            } else {
+                print!("{}", line);
+            }
+        }
+        // Flush file if open
+        if let Some(ref mut fw) = file_writer {
+            let _ = fw.flush().await;
         }
     });
 
@@ -74,10 +91,12 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Run pipeline
+    // Run pipeline — pass hit_tx into pipeline, drop it here after run returns
+    // so the writer task can detect channel closed and exit
     pipeline::run(config.clone(), stats.clone(), hit_tx).await?;
+    // hit_tx is now fully dropped (pipeline drops its copy, main drops here)
 
-    // Wait for writer to drain
+    // Wait for writer to drain all buffered hits
     writer_task.await?;
 
     // Final summary
