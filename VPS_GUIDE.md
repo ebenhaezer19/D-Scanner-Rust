@@ -289,8 +289,8 @@ Timeout:     8s
 Max-JS:      2
 Binary:      Rust debug
 OS:          Windows
-Time:        111 seconds
-Rate:        ~90 URL/s
+Time:        223 seconds
+Rate:        ~45 URL/s
 ```
 
 Hit results with --min-confidence high (final verified run):
