@@ -240,4 +240,3 @@ Actual behavior: what happened
 Last 20 log lines: paste here
 ```
 
-Open an issue at: https://github.com/ebenhaezer19/D-Scanner-Rust/issues
