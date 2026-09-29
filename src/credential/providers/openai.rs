@@ -10,8 +10,12 @@ use crate::types::Confidence;
 //   sk-svcacct-<key>      : sk-svcacct- + 48+ chars
 //   sk-or-v1-<key>        : OpenRouter (also caught by openrouter provider)
 static RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"sk-(?:proj-|svcacct-|or-v1-)?[A-Za-z0-9_\-]{20,}").unwrap()
+    // (?<![A-Za-z]) — negative lookbehind: ensure sk- is NOT preceded by a letter.
+    // Prevents matching "Sosialantropologisk-institutt-..." (Norwegian word ending in -sk)
+    // Real OpenAI keys always start at a word boundary / after non-alpha char.
+    Regex::new(r"(?<![A-Za-z])sk-(?:proj-|svcacct-|or-v1-)?[A-Za-z0-9_\-]{20,}").unwrap()
 });
+
 
 pub struct OpenAIProvider;
 
@@ -46,8 +50,9 @@ impl CredentialProvider for OpenAIProvider {
             s.len() >= 2 && s.chars().all(|c| c.is_ascii_alphabetic())
         }).count();
 
-        // More than 3 readable word segments = almost certainly a slug
-        if word_like > 3 {
+        // More than 2 readable word segments = almost certainly a slug or internal ID
+        // e.g. sk-institutt-Universitetet-i-Oslo-343887709134352
+        if word_like >= 3 {
             return Confidence::Low;
         }
 
