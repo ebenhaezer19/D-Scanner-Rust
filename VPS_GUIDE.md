@@ -281,12 +281,13 @@ A 10M-domain list uses roughly the same 233 MB.
 ### Real Scan — 9,980 Production URLs
 
 ```
-Input:       9,980 real URLs from Go scanner domain list
+Input:       9,980 real URLs from the production domain list
+             (same list previously fed into the Go scanner — scanned here by Rust)
              (HTTP + HTTPS, IPs + hostnames, mixed ports)
 Concurrency: 300
 Timeout:     8s
 Max-JS:      2
-Binary:      debug
+Binary:      Rust debug
 OS:          Windows
 Time:        111 seconds
 Rate:        ~90 URL/s
