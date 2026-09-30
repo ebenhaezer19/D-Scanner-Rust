@@ -1,10 +1,10 @@
 # .cargo/config.toml
 # Rust build configuration
 
-# Fix: ring crate fails on paths with spaces ("FILE KU").
-# Move build artifacts to path without spaces.
+# Fix for Windows: if building on Windows with spaces in path ("FILE KU"),
+# set CARGO_TARGET_DIR=C:/dreks-target in shell or local .cargo/config.toml.
+# Do NOT set target-dir here — it breaks Linux VPS builds.
 [build]
-target-dir = "C:/dreks-target"
 
 # Windows dev: MinGW GNU toolchain (MSYS2)
 [target.x86_64-pc-windows-gnu]
