@@ -1,0 +1,21 @@
+# Build artifacts (target-dir set to C:/dreks-target, but just in case)
+/target/
+
+# Cargo lock for libraries (keep for binaries)
+# Cargo.lock
+
+# Local documentation (not for repo)
+GIT_GUIDE.md
+
+# Test input files
+test_domains.txt
+domains.txt
+*.txt
+
+# Environment
+.env
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
