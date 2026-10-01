@@ -46,6 +46,7 @@ static REGISTRY: Lazy<Vec<Box<dyn CredentialProvider>>> = Lazy::new(|| {
         Box::new(providers::cerebras::CerebrasProvider),
         Box::new(providers::perplexity::PerplexityProvider),
         Box::new(providers::gitlab::GitLabProvider),
+        Box::new(providers::livewire::LivewireProvider),  // Livewire v3 pre-qualifier for M2
     ]
 });
 

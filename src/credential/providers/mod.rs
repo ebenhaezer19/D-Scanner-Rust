@@ -16,3 +16,4 @@ pub mod replicate;
 pub mod cerebras;
 pub mod perplexity;
 pub mod gitlab;
+pub mod livewire;
