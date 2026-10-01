@@ -53,7 +53,11 @@ pub async fn run(
     drop(target_tx); // drop the original so DNS workers see channel close when stream task exits
 
     // --- DNS workers ---
-    let dns_workers = (config.concurrency / 4).max(64).min(512);
+    // DNS workers: scale with concurrency, cap raised to 2048 for high-core VPS.
+    // Formula: concurrency/4, min 128, max 2048.
+    // e.g. concurrency=500  → 128, concurrency=2000 → 500, concurrency=10000 → 2048
+    let dns_workers = (config.concurrency / 4).max(128).min(2048);
+
     info!("starting {dns_workers} DNS workers");
     for _ in 0..dns_workers {
         let rx = target_rx.clone();
@@ -62,11 +66,10 @@ pub async fn run(
         let st = stats.clone();
         tasks.spawn(async move {
             crate::dns::dns_worker(rx, tx, &cfg, &st).await;
-            // tx (live_tx clone) drops here when this worker exits
         });
     }
-    drop(target_rx); // no more receivers needed outside workers
-    drop(live_tx);   // drop original; channel closes when all DNS worker clones drop
+    drop(target_rx);
+    drop(live_tx);
 
     // --- Fetch workers ---
     let fetch_workers = config.concurrency;
