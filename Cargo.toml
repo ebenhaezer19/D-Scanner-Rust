@@ -35,6 +35,15 @@ hickory-proto = "0.24"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 
+# Crypto — for laravel2shell AES-256-CBC + HMAC-SHA256 (CVE-2018-15133)
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+cipher = { version = "0.4", features = ["block-padding", "alloc"] }
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.21"
+hex = "0.4"
+
 # HTML parsing
 scraper = "0.20"
 
