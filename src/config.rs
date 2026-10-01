@@ -68,6 +68,12 @@ pub struct Cli {
     /// Max concurrent exploit attempts (exploit engines are slow).
     #[arg(long, default_value_t = 10)]
     pub exploit_concurrency: usize,
+
+    /// Per-request timeout for exploit engine (seconds).
+    /// Lower = faster dead-target skip, higher = more tolerance for slow targets.
+    /// Recommended: 10-15s for balanced speed/coverage.
+    #[arg(long, default_value_t = 15)]
+    pub exploit_timeout: u64,
 }
 
 /// Runtime config derived from CLI + any JSON overrides.
@@ -88,6 +94,7 @@ pub struct Config {
     pub hits_input: Option<String>,
     pub exploit_output: Option<String>,
     pub exploit_concurrency: usize,
+    pub exploit_timeout: u64,
 }
 
 impl Config {
@@ -116,6 +123,7 @@ impl Config {
             hits_input: cli.hits_input.clone(),
             exploit_output: cli.exploit_output.clone(),
             exploit_concurrency: cli.exploit_concurrency,
+            exploit_timeout: cli.exploit_timeout,
         }
     }
 }

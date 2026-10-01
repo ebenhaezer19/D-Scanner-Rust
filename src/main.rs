@@ -131,6 +131,7 @@ async fn main() -> anyhow::Result<()> {
                     hits_input: hits_file,
                     exploit_output: config.exploit_output.clone(),
                     concurrency: config.exploit_concurrency,
+                    timeout_secs: config.exploit_timeout,
                 };
 
                 if let Err(e) = exploit::dispatcher::run(dispatch_cfg, engines).await {
