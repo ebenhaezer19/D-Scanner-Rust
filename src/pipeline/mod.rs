@@ -53,10 +53,13 @@ pub async fn run(
     drop(target_tx); // drop the original so DNS workers see channel close when stream task exits
 
     // --- DNS workers ---
-    // DNS workers: scale with concurrency, cap raised to 2048 for high-core VPS.
-    // Formula: concurrency/4, min 128, max 2048.
-    // e.g. concurrency=500  → 128, concurrency=2000 → 500, concurrency=10000 → 2048
-    let dns_workers = (config.concurrency / 4).max(128).min(2048);
+    // DNS workers: scale with concurrency but cap at 256 to prevent UDP socket
+    // contention in hickory-resolver. Too many workers sharing the same UDP
+    // socket at high concurrency causes "ignoring response / message id mismatch"
+    // warnings and dropped DNS responses.
+    // Sweet spot: 256 workers handles high throughput without socket confusion.
+    let dns_workers = (config.concurrency / 8).max(64).min(256);
+
 
     info!("starting {dns_workers} DNS workers");
     for _ in 0..dns_workers {
