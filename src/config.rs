@@ -9,6 +9,8 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(name = "dreks", version, about = "High-performance web scanner")]
 pub struct Cli {
+    // ── M1: credential scan ─────────────────────────────────────────────────
+
     /// Domain/URL list file (one per line). Use '-' for stdin.
     #[arg(short, long, default_value = "domains.txt")]
     pub input: String,
@@ -48,11 +50,30 @@ pub struct Cli {
     /// Minimum confidence level to output (low, medium, high)
     #[arg(long, default_value = "medium")]
     pub min_confidence: String,
+
+    // ── M2: exploit engines ─────────────────────────────────────────────────
+
+    /// Operation mode: scan (M1 only), exploit (M2 only), full (M1+M2).
+    #[arg(long, default_value = "scan")]
+    pub mode: String,
+
+    /// M1 hits JSONL to read in exploit/full mode.
+    #[arg(long)]
+    pub hits_input: Option<String>,
+
+    /// Exploit results output file (JSONL). Stdout if not set.
+    #[arg(long)]
+    pub exploit_output: Option<String>,
+
+    /// Max concurrent exploit attempts (exploit engines are slow).
+    #[arg(long, default_value_t = 10)]
+    pub exploit_concurrency: usize,
 }
 
 /// Runtime config derived from CLI + any JSON overrides.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    // M1
     pub input: String,
     pub concurrency: usize,
     pub dns_servers: Vec<String>,
@@ -62,6 +83,11 @@ pub struct Config {
     pub output_path: Option<PathBuf>,
     pub raw_dns: bool,
     pub min_confidence: String,
+    // M2
+    pub mode: String,
+    pub hits_input: Option<String>,
+    pub exploit_output: Option<String>,
+    pub exploit_concurrency: usize,
 }
 
 impl Config {
@@ -85,6 +111,11 @@ impl Config {
             output_path: cli.output.clone(),
             raw_dns: !cli.no_raw_dns,
             min_confidence: cli.min_confidence.to_lowercase(),
+            // M2
+            mode: cli.mode.to_lowercase(),
+            hits_input: cli.hits_input.clone(),
+            exploit_output: cli.exploit_output.clone(),
+            exploit_concurrency: cli.exploit_concurrency,
         }
     }
 }

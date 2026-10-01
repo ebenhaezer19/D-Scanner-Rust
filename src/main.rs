@@ -2,11 +2,16 @@
 // D-Scanner Rust Engine — entry point.
 //
 // M1 scope: pipeline foundation + DNS + HTTP fetch + credential scanning.
-// Exploit engines (livewire2shell, etc.) will be added in M2.
+// M2 scope: exploit engines (livewire2shell, laravel2shell, langflow2shell, etc.)
+//
+// Use --mode scan    (default) for M1 only.
+// Use --mode exploit for M2 only (reads --hits-input).
+// Use --mode full    for M1 then M2 in one run.
 
 mod config;
 mod credential;
 mod dns;
+mod exploit;
 mod fetch;
 mod pipeline;
 mod types;
@@ -91,27 +96,49 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Run pipeline — pass hit_tx into pipeline, drop it here after run returns
-    // so the writer task can detect channel closed and exit
-    pipeline::run(config.clone(), stats.clone(), hit_tx).await?;
-    // hit_tx is now fully dropped (pipeline drops its copy, main drops here)
+    // ── M1: credential scan (scan + full modes only) ──────────────────────────
+    if config.mode == "scan" || config.mode == "full" {
+        pipeline::run(config.clone(), stats.clone(), hit_tx).await?;
+        writer_task.await?;
 
-    // Wait for writer to drain all buffered hits
-    writer_task.await?;
+        let total = stats.total.load(Ordering::Relaxed);
+        let hits  = stats.hits.load(Ordering::Relaxed);
+        let dns_ok = stats.dns_ok.load(Ordering::Relaxed);
+        let dns_nx = stats.dns_nxdomain.load(Ordering::Relaxed);
+        info!(total, hits, dns_ok, dns_nxdomain = dns_nx, "[done] scan complete");
+    } else {
+        // exploit-only: drop writer immediately (no M1 hits to write)
+        drop(hit_tx);
+        writer_task.await?;
+    }
 
-    // Final summary
-    let total = stats.total.load(Ordering::Relaxed);
-    let hits = stats.hits.load(Ordering::Relaxed);
-    let dns_ok = stats.dns_ok.load(Ordering::Relaxed);
-    let dns_nx = stats.dns_nxdomain.load(Ordering::Relaxed);
+    // ── M2: exploit mode ─────────────────────────────────────────────────────
+    if config.mode == "exploit" || config.mode == "full" {
+        // Determine hits input: --hits-input or --output from M1
+        let hits_path = config.hits_input.clone()
+            .or_else(|| config.output_path.as_ref().map(|p| p.to_string_lossy().to_string()));
 
-    info!(
-        total,
-        hits,
-        dns_ok,
-        dns_nxdomain = dns_nx,
-        "[done] scan complete"
-    );
+        match hits_path {
+            None => {
+                tracing::error!("--mode exploit requires --hits-input <file.jsonl>");
+            }
+            Some(hits_file) => {
+                info!("[exploit] loading engines");
+                let engines = exploit::all_engines();
+                info!("[exploit] {} engines registered", engines.len());
+
+                let dispatch_cfg = exploit::dispatcher::DispatchConfig {
+                    hits_input: hits_file,
+                    exploit_output: config.exploit_output.clone(),
+                    concurrency: config.exploit_concurrency,
+                };
+
+                if let Err(e) = exploit::dispatcher::run(dispatch_cfg, engines).await {
+                    tracing::error!("[exploit] dispatcher error: {e}");
+                }
+            }
+        }
+    }
 
     Ok(())
 }
