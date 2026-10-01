@@ -9,11 +9,11 @@ use crate::types::Confidence;
 //   sk-proj-<key>         : sk-proj- + 48+ chars
 //   sk-svcacct-<key>      : sk-svcacct- + 48+ chars
 //   sk-or-v1-<key>        : OpenRouter (also caught by openrouter provider)
+// NOTE: Rust's regex crate does NOT support lookahead/lookbehind.
+// The negative lookbehind (?<![A-Za-z]) is implemented manually in extract()
+// by checking the character before the match position.
 static RE: Lazy<Regex> = Lazy::new(|| {
-    // (?<![A-Za-z]) — negative lookbehind: ensure sk- is NOT preceded by a letter.
-    // Prevents matching "Sosialantropologisk-institutt-..." (Norwegian word ending in -sk)
-    // Real OpenAI keys always start at a word boundary / after non-alpha char.
-    Regex::new(r"(?<![A-Za-z])sk-(?:proj-|svcacct-|or-v1-)?[A-Za-z0-9_\-]{20,}").unwrap()
+    Regex::new(r"sk-(?:proj-|svcacct-|or-v1-)?[A-Za-z0-9_\-]{20,}").unwrap()
 });
 
 
@@ -23,7 +23,18 @@ impl CredentialProvider for OpenAIProvider {
     fn name(&self) -> &'static str { "openai" }
 
     fn extract<'a>(&self, text: &'a str) -> Vec<&'a str> {
-        RE.find_iter(text).map(|m| m.as_str()).collect()
+        RE.find_iter(text)
+            .filter(|m| {
+                // Manual negative lookbehind: reject matches where sk- is
+                // preceded by an alpha char (e.g. "Sosialantropologisk-...").
+                // Rust regex crate does not support (?<![A-Za-z]) natively.
+                let start = m.start();
+                if start == 0 { return true; }
+                let prev = text[..start].chars().last().unwrap_or(' ');
+                !prev.is_ascii_alphabetic()
+            })
+            .map(|m| m.as_str())
+            .collect()
     }
 
     fn confidence(&self, candidate: &str) -> Confidence {
