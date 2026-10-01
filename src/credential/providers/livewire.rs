@@ -21,21 +21,29 @@ impl CredentialProvider for LivewireProvider {
     fn name(&self) -> &'static str { "livewire" }
 
     fn extract<'a>(&self, text: &'a str) -> Vec<&'a str> {
-        // Count detection signals
-        let signals = [
-            "wire:id=",
+        // Strong signals — any ONE is sufficient (very specific to Livewire v3)
+        let strong = [
+            "wire:id=",          // Livewire component attribute in DOM
+            "wire:snapshot=",    // Livewire v3 snapshot
+            "wire:effects=",     // Livewire v3 effects
+            "Livewire.start(",   // Livewire JS bootstrap
+            "window.livewire_token", // Livewire CSRF token
+        ];
+
+        // Weak signals — need at least 2 of these
+        let weak = [
             "livewire/livewire.js",
             "/livewire/update",
-            "Livewire.start(",
             "@livewire(",
-            "wire:snapshot=",
-            "wire:effects=",
             "window.livewire",
+            "livewire.min.js",
         ];
-        let count = signals.iter().filter(|&&s| text.contains(s)).count();
 
-        if count > 0 {
-            // Return a synthetic marker so M2 knows this is a Livewire target
+        let strong_count = strong.iter().filter(|&&s| text.contains(s)).count();
+        let weak_count   = weak.iter().filter(|&&s| text.contains(s)).count();
+
+        // Confirmed Livewire v3: 1+ strong signal OR 2+ weak signals
+        if strong_count >= 1 || weak_count >= 2 {
             vec!["v3"]
         } else {
             vec![]
