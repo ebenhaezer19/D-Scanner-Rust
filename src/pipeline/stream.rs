@@ -58,15 +58,13 @@ async fn stream_reader<R: tokio::io::AsyncRead + Unpin>(
             continue;
         }
 
-        // Parse into Target — massdns format or plain domain
-        let target = if skip_dns {
-            Target::from_massdns_line(&line)
-        } else {
-            Target::from_str(&line)
-        };
-
-        match target {
-            Some(t) => {
+        // Parse into Target(s) — massdns returns Vec (http+https), normal returns Option
+        if skip_dns {
+            let targets = Target::from_massdns_line(&line);
+            if targets.is_empty() {
+                skipped += 1;
+            }
+            for t in targets {
                 stats.total.fetch_add(1, Ordering::Relaxed);
                 debug!("queued: {} (ip={:?})", t.url, t.resolved_ip);
                 if tx.send(t).await.is_err() {
@@ -74,8 +72,17 @@ async fn stream_reader<R: tokio::io::AsyncRead + Unpin>(
                 }
                 sent += 1;
             }
-            None => {
-                skipped += 1;
+        } else {
+            match Target::from_str(&line) {
+                Some(t) => {
+                    stats.total.fetch_add(1, Ordering::Relaxed);
+                    debug!("queued: {} (ip={:?})", t.url, t.resolved_ip);
+                    if tx.send(t).await.is_err() {
+                        break;
+                    }
+                    sent += 1;
+                }
+                None => { skipped += 1; }
             }
         }
     }

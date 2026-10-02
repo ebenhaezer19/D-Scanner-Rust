@@ -46,52 +46,68 @@ impl Target {
     ///   "example.com A 1.2.3.4"   → same (with or without trailing dot)
     ///   "1.2.3.4"                  → bare IP target
     ///   "example.com"             → plain domain (no IP — falls back to from_str)
-    pub fn from_massdns_line(line: &str) -> Option<Self> {
+    ///
+    /// Returns Vec<Target> because we emit BOTH http:// and https:// variants
+    /// when an IP is known, maximizing hit coverage (some sites HTTPS-only).
+    pub fn from_massdns_line(line: &str) -> Vec<Self> {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
-            return None;
+            return vec![];
         }
 
         let parts: Vec<&str> = line.split_whitespace().collect();
 
         match parts.len() {
-            // Format: "domain. A ip" or "domain A ip"
+            // Format: "domain. A ip" or "domain A ip" (massdns -o S)
             n if n >= 3 => {
                 let rtype = parts[1].to_uppercase();
                 if rtype != "A" && rtype != "AAAA" {
-                    return None; // skip CNAME, NS, MX etc.
+                    return vec![]; // skip CNAME, NS, MX etc.
                 }
                 let domain = parts[0].trim_end_matches('.');
                 let ip = parts[n - 1];
-                // Build HTTP target using domain as Host, IP for connect
-                let url = format!("http://{}", domain);
-                let mut t = Self::from_str(&url)?;
-                t.resolved_ip = Some(ip.to_string());
-                Some(t)
+                // Emit both http and https to maximise coverage
+                let mut targets = Vec::new();
+                for scheme in ["http", "https"] {
+                    if let Some(mut t) = Self::from_str(&format!("{}://{}", scheme, domain)) {
+                        t.resolved_ip = Some(ip.to_string());
+                        targets.push(t);
+                    }
+                }
+                targets
             }
             // Single token: bare IP or bare domain
             1 => {
-                // Check if it looks like an IP
                 let is_ip = parts[0].parse::<std::net::IpAddr>().is_ok();
-                let mut t = Self::from_str(parts[0])?;
-                if is_ip {
-                    t.resolved_ip = Some(parts[0].to_string());
+                let mut targets = Vec::new();
+                for scheme in ["http", "https"] {
+                    if let Some(mut t) = Self::from_str(&format!("{}://{}", scheme, parts[0])) {
+                        if is_ip {
+                            t.resolved_ip = Some(parts[0].to_string());
+                        }
+                        targets.push(t);
+                    }
                 }
-                Some(t)
+                targets
             }
-            // Format: "domain ip" (2 tokens, space-separated)
+            // Format: "domain ip" (2 tokens)
             2 => {
                 let domain = parts[0].trim_end_matches('.');
                 let ip = parts[1];
                 if ip.parse::<std::net::IpAddr>().is_ok() {
-                    let mut t = Self::from_str(domain)?;
-                    t.resolved_ip = Some(ip.to_string());
-                    Some(t)
+                    let mut targets = Vec::new();
+                    for scheme in ["http", "https"] {
+                        if let Some(mut t) = Self::from_str(&format!("{}://{}", scheme, domain)) {
+                            t.resolved_ip = Some(ip.to_string());
+                            targets.push(t);
+                        }
+                    }
+                    targets
                 } else {
-                    Self::from_str(domain)
+                    Self::from_str(domain).into_iter().collect()
                 }
             }
-            _ => None,
+            _ => vec![],
         }
     }
 }
