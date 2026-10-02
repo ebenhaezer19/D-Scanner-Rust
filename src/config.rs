@@ -47,6 +47,12 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub no_raw_dns: bool,
 
+    /// Skip DNS resolution — input is massdns pre-resolved (domain A ip format).
+    /// Bypasses all DNS workers. Use with massdns output or plain IP lists.
+    /// Compatible with: "domain. A 1.2.3.4", "domain 1.2.3.4", "1.2.3.4"
+    #[arg(long, default_value_t = false)]
+    pub skip_dns: bool,
+
     /// Minimum confidence level to output (low, medium, high)
     #[arg(long, default_value = "medium")]
     pub min_confidence: String,
@@ -89,6 +95,7 @@ pub struct Config {
     pub output_path: Option<PathBuf>,
     pub raw_dns: bool,
     pub min_confidence: String,
+    pub skip_dns: bool,      // massdns pre-resolved mode
     // M2
     pub mode: String,
     pub hits_input: Option<String>,
@@ -118,6 +125,7 @@ impl Config {
             output_path: cli.output.clone(),
             raw_dns: !cli.no_raw_dns,
             min_confidence: cli.min_confidence.to_lowercase(),
+            skip_dns: cli.skip_dns,
             // M2
             mode: cli.mode.to_lowercase(),
             hits_input: cli.hits_input.clone(),

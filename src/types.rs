@@ -12,6 +12,9 @@ pub struct Target {
     pub host: String,
     pub scheme: String,
     pub port: Option<u16>,
+    /// Pre-resolved IP from massdns (--skip-dns mode).
+    /// When set, DNS worker is bypassed — IP used directly for TCP connect.
+    pub resolved_ip: Option<String>,
 }
 
 impl Target {
@@ -35,7 +38,61 @@ impl Target {
         let scheme = url.scheme().to_string();
         let port = url.port();
 
-        Some(Self { url: with_scheme, host, scheme, port })
+        Some(Self { url: with_scheme, host, scheme, port, resolved_ip: None })
+    }
+
+    /// Parse massdns -o S output line:
+    ///   "example.com. A 1.2.3.4"  → Target with resolved_ip=Some("1.2.3.4")
+    ///   "example.com A 1.2.3.4"   → same (with or without trailing dot)
+    ///   "1.2.3.4"                  → bare IP target
+    ///   "example.com"             → plain domain (no IP — falls back to from_str)
+    pub fn from_massdns_line(line: &str) -> Option<Self> {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return None;
+        }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+
+        match parts.len() {
+            // Format: "domain. A ip" or "domain A ip"
+            n if n >= 3 => {
+                let rtype = parts[1].to_uppercase();
+                if rtype != "A" && rtype != "AAAA" {
+                    return None; // skip CNAME, NS, MX etc.
+                }
+                let domain = parts[0].trim_end_matches('.');
+                let ip = parts[n - 1];
+                // Build HTTP target using domain as Host, IP for connect
+                let url = format!("http://{}", domain);
+                let mut t = Self::from_str(&url)?;
+                t.resolved_ip = Some(ip.to_string());
+                Some(t)
+            }
+            // Single token: bare IP or bare domain
+            1 => {
+                // Check if it looks like an IP
+                let is_ip = parts[0].parse::<std::net::IpAddr>().is_ok();
+                let mut t = Self::from_str(parts[0])?;
+                if is_ip {
+                    t.resolved_ip = Some(parts[0].to_string());
+                }
+                Some(t)
+            }
+            // Format: "domain ip" (2 tokens, space-separated)
+            2 => {
+                let domain = parts[0].trim_end_matches('.');
+                let ip = parts[1];
+                if ip.parse::<std::net::IpAddr>().is_ok() {
+                    let mut t = Self::from_str(domain)?;
+                    t.resolved_ip = Some(ip.to_string());
+                    Some(t)
+                } else {
+                    Self::from_str(domain)
+                }
+            }
+            _ => None,
+        }
     }
 }
 

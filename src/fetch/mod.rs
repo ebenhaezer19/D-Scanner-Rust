@@ -62,14 +62,25 @@ pub async fn fetch_target(
     let client = new_client(config)?;
     let mut hits = Vec::new();
 
+    // ── Build request URL ─────────────────────────────────────────────────────
+    // In --skip-dns mode, resolved_ip bypasses reqwest DNS lookup.
+    // Connect to IP directly but set Host header for virtual hosting.
+    let request_url = if let Some(ref ip) = target.resolved_ip {
+        let port_str = target.port.map(|p| format!(":{}", p)).unwrap_or_default();
+        format!("{}://{}{}", target.scheme, ip, port_str)
+    } else {
+        target.url.clone()
+    };
+
     // ── Fetch main HTML page ──────────────────────────────────────────────────
-    let resp = client
-        .get(&target.url)
-        .send()
-        .await?;
+    let mut req = client.get(&request_url);
+    if target.resolved_ip.is_some() {
+        req = req.header("Host", &target.host);
+    }
+    let resp = req.send().await?;
 
     let status = resp.status();
-    debug!("{} → HTTP {}", target.url, status);
+    debug!("{} -> HTTP {} (via {})", target.url, status, request_url);
 
     // Read body with size limit
     let body_bytes = read_limited(resp, config.max_body_bytes).await?;

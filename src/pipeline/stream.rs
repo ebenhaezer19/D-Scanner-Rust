@@ -1,6 +1,7 @@
 // src/pipeline/stream.rs
 // Streaming domain input — reads domains line by line without loading to RAM.
 // Supports: file path, stdin ('-'), or direct URL list.
+// With --skip-dns: parses massdns -o S output (domain A ip) for pre-resolved targets.
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -17,28 +18,31 @@ pub async fn stream_domains(
     tx: async_channel::Sender<Target>,
     stats: &Arc<ScanStats>,
 ) -> anyhow::Result<()> {
-    // Determine input source
     let input = &config.input;
-    info!("streaming domains from: {input}");
+    info!(
+        "streaming domains from: {input} (skip_dns={})",
+        config.skip_dns
+    );
 
     if input == "-" {
-        // Read from stdin
         let stdin = tokio::io::stdin();
-        stream_reader(BufReader::new(stdin), tx, stats).await
+        stream_reader(BufReader::new(stdin), tx, stats, config.skip_dns).await
     } else {
-        // Read from file
         let file = tokio::fs::File::open(input).await.map_err(|e| {
             anyhow::anyhow!("cannot open input file '{}': {e}", input)
         })?;
-        stream_reader(BufReader::new(file), tx, stats).await
+        stream_reader(BufReader::new(file), tx, stats, config.skip_dns).await
     }
 }
 
 /// Generic line-by-line reader that sends parsed Targets to the pipeline channel.
+/// When `skip_dns=true`, uses massdns output parser (from_massdns_line).
+/// When `skip_dns=false`, uses standard domain parser (from_str).
 async fn stream_reader<R: tokio::io::AsyncRead + Unpin>(
     reader: BufReader<R>,
     tx: async_channel::Sender<Target>,
     stats: &Arc<ScanStats>,
+    skip_dns: bool,
 ) -> anyhow::Result<()> {
     let mut lines = reader.lines();
     let mut sent = 0u64;
@@ -54,15 +58,18 @@ async fn stream_reader<R: tokio::io::AsyncRead + Unpin>(
             continue;
         }
 
-        // Parse into Target
-        match Target::from_str(&line) {
-            Some(target) => {
-                stats.total.fetch_add(1, Ordering::Relaxed);
-                debug!("queued: {}", target.url);
+        // Parse into Target — massdns format or plain domain
+        let target = if skip_dns {
+            Target::from_massdns_line(&line)
+        } else {
+            Target::from_str(&line)
+        };
 
-                // Send to pipeline — blocks if channel is full (backpressure)
-                if tx.send(target).await.is_err() {
-                    // Channel closed — pipeline shutting down
+        match target {
+            Some(t) => {
+                stats.total.fetch_add(1, Ordering::Relaxed);
+                debug!("queued: {} (ip={:?})", t.url, t.resolved_ip);
+                if tx.send(t).await.is_err() {
                     break;
                 }
                 sent += 1;
@@ -75,9 +82,4 @@ async fn stream_reader<R: tokio::io::AsyncRead + Unpin>(
 
     info!("stream done: {sent} queued, {skipped} skipped");
     Ok(())
-    // tx drops here → DNS workers will see channel closed and exit
 }
-
-// ─── Config field for input (add to Config struct) ───────────────────────────
-// We reference config.input above — make sure Config has this field.
-// Already defined in config.rs as pub input: String.
