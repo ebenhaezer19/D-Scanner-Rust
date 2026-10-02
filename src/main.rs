@@ -10,6 +10,7 @@ mod dns;
 mod fetch;
 mod pipeline;
 mod types;
+mod wp2shell;
 
 use clap::Parser;
 use std::sync::Arc;
@@ -17,12 +18,32 @@ use std::sync::atomic::Ordering;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use config::{Cli, Config};
+use config::{Cli, Config, SubCommand};
 use types::ScanStats;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    // Route wp2shell subcommand before setting up the full pipeline
+    if let Some(SubCommand::Wp2shell(args)) = cli.command {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            )
+            .with_target(false)
+            .compact()
+            .init();
+        return wp2shell::run_from_args(
+            args.hosts,
+            args.file,
+            args.json,
+            args.threads,
+            args.timeout,
+        )
+        .await;
+    }
 
     // Setup structured logging
     tracing_subscriber::fmt()

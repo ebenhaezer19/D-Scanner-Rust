@@ -5,10 +5,45 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// wp2shell scan subcommand arguments
+#[derive(clap::Args, Debug)]
+pub struct Wp2shellArgs {
+    /// Hosts to scan (space-separated)
+    #[arg(value_name = "HOSTS")]
+    pub hosts: Vec<String>,
+
+    /// Read hosts from file (one per line, # = comment)
+    #[arg(short = 'f', long, value_name = "FILE")]
+    pub file: Option<std::path::PathBuf>,
+
+    /// Output results as JSON
+    #[arg(short = 'j', long)]
+    pub json: bool,
+
+    /// Max concurrent HTTP connections
+    #[arg(short = 't', long, default_value_t = 50)]
+    pub threads: usize,
+
+    /// HTTP timeout (seconds)
+    #[arg(long, default_value_t = 15)]
+    pub timeout: u64,
+}
+
+/// Top-level subcommands. When absent, the tool runs the default credential scan.
+#[derive(clap::Subcommand, Debug)]
+pub enum SubCommand {
+    /// WordPress wp2shell vulnerability scanner (CVE-2026-63030 / CVE-2026-60137)
+    Wp2shell(Wp2shellArgs),
+}
+
 /// D-Scanner Rust Engine — CLI arguments
 #[derive(Parser, Debug)]
 #[command(name = "dreks", version, about = "High-performance web scanner")]
 pub struct Cli {
+    /// Subcommand (omit to run the default credential scan)
+    #[command(subcommand)]
+    pub command: Option<SubCommand>,
+
     /// Domain/URL list file (one per line). Use '-' for stdin.
     #[arg(short, long, default_value = "domains.txt")]
     pub input: String,
