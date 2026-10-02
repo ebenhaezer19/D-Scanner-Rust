@@ -6,7 +6,7 @@
 //
 // Use --mode scan    (default) for M1 only.
 // Use --mode exploit for M2 only (reads --hits-input).
-// Use --mode full    for M1 then M2 in one run.
+// Use --mode full    for M1 + M2 streaming (concurrent, zero disk I/O between stages).
 
 mod config;
 mod credential;
@@ -49,37 +49,6 @@ async fn main() -> anyhow::Result<()> {
         "dreks-core starting"
     );
 
-    // Hit sink — receives hits from fetch workers and writes to stdout/file
-    let (hit_tx, mut hit_rx) = tokio::sync::mpsc::channel::<types::Hit>(10_000);
-
-    // Spawn hit writer
-    let output_path = config.output_path.clone();
-    let writer_task = tokio::spawn(async move {
-        // Open output file if specified, otherwise write to stdout
-        let mut file_writer: Option<tokio::io::BufWriter<tokio::fs::File>> = None;
-        if let Some(ref path) = output_path {
-            match tokio::fs::File::create(path).await {
-                Ok(f) => file_writer = Some(tokio::io::BufWriter::new(f)),
-                Err(e) => tracing::error!("cannot open output file {:?}: {e}", path),
-            }
-        }
-
-        use tokio::io::AsyncWriteExt;
-        while let Some(hit) = hit_rx.recv().await {
-            let mut line = serde_json::to_string(&hit).unwrap_or_default();
-            line.push('\n');
-            if let Some(ref mut fw) = file_writer {
-                let _ = fw.write_all(line.as_bytes()).await;
-            } else {
-                print!("{}", line);
-            }
-        }
-        // Flush file if open
-        if let Some(ref mut fw) = file_writer {
-            let _ = fw.flush().await;
-        }
-    });
-
     // Progress reporter (every 10s)
     let stats_prog = stats.clone();
     let _progress_task = tokio::spawn(async move {
@@ -96,50 +65,152 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    // ── M1: credential scan (scan + full modes only) ──────────────────────────
-    if config.mode == "scan" || config.mode == "full" {
-        pipeline::run(config.clone(), stats.clone(), hit_tx).await?;
-        writer_task.await?;
+    match config.mode.as_str() {
 
-        let total = stats.total.load(Ordering::Relaxed);
-        let hits  = stats.hits.load(Ordering::Relaxed);
-        let dns_ok = stats.dns_ok.load(Ordering::Relaxed);
-        let dns_nx = stats.dns_nxdomain.load(Ordering::Relaxed);
-        info!(total, hits, dns_ok, dns_nxdomain = dns_nx, "[done] scan complete");
-    } else {
-        // exploit-only: drop writer immediately (no M1 hits to write)
-        drop(hit_tx);
-        writer_task.await?;
-    }
+        // ── M1 only: credential scan ──────────────────────────────────────────
+        "scan" => {
+            let (hit_tx, hit_rx) = spawn_hit_writer(config.output_path.clone());
+            pipeline::run(config.clone(), stats.clone(), hit_tx).await?;
+            drop(hit_rx); // writer finishes when hit_tx is dropped by pipeline
 
-    // ── M2: exploit mode ─────────────────────────────────────────────────────
-    if config.mode == "exploit" || config.mode == "full" {
-        // Determine hits input: --hits-input or --output from M1
-        let hits_path = config.hits_input.clone()
-            .or_else(|| config.output_path.as_ref().map(|p| p.to_string_lossy().to_string()));
+            let total = stats.total.load(Ordering::Relaxed);
+            let hits  = stats.hits.load(Ordering::Relaxed);
+            let dns_ok = stats.dns_ok.load(Ordering::Relaxed);
+            let dns_nx = stats.dns_nxdomain.load(Ordering::Relaxed);
+            info!(total, hits, dns_ok, dns_nxdomain = dns_nx, "[done] scan complete");
+        }
 
-        match hits_path {
-            None => {
-                tracing::error!("--mode exploit requires --hits-input <file.jsonl>");
-            }
-            Some(hits_file) => {
-                info!("[exploit] loading engines");
-                let engines = exploit::all_engines();
-                info!("[exploit] {} engines registered", engines.len());
+        // ── M2 only: exploit from file ────────────────────────────────────────
+        "exploit" => {
+            let hits_path = config.hits_input.clone()
+                .or_else(|| config.output_path.as_ref().map(|p| p.to_string_lossy().to_string()));
 
-                let dispatch_cfg = exploit::dispatcher::DispatchConfig {
-                    hits_input: hits_file,
-                    exploit_output: config.exploit_output.clone(),
-                    concurrency: config.exploit_concurrency,
-                    timeout_secs: config.exploit_timeout,
-                };
+            match hits_path {
+                None => {
+                    tracing::error!("--mode exploit requires --hits-input <file.jsonl>");
+                }
+                Some(hits_file) => {
+                    info!("[exploit] loading engines (file mode)");
+                    let engines = exploit::all_engines();
+                    info!("[exploit] {} engines registered", engines.len());
 
-                if let Err(e) = exploit::dispatcher::run(dispatch_cfg, engines).await {
-                    tracing::error!("[exploit] dispatcher error: {e}");
+                    let dispatch_cfg = exploit::dispatcher::DispatchConfig {
+                        hits_input: hits_file,
+                        exploit_output: config.exploit_output.clone(),
+                        concurrency: config.exploit_concurrency,
+                        timeout_secs: config.exploit_timeout,
+                    };
+
+                    if let Err(e) = exploit::dispatcher::run(dispatch_cfg, engines).await {
+                        tracing::error!("[exploit] dispatcher error: {e}");
+                    }
                 }
             }
+        }
+
+        // ── FULL streaming mode: M1 + M2 concurrent ───────────────────────────
+        // Phase 3B: M1 hits stream directly to M2 via tokio channel.
+        // M1 and M2 run CONCURRENTLY — no file I/O between stages.
+        // Fresh M1 hits go to M2 immediately → ~0% dead targets → higher utilization.
+        "full" => {
+            info!("[full] streaming mode — M1 + M2 concurrent, no JSONL handoff");
+
+            // Channel: M1 hits → M2 dispatcher
+            let (m2_hit_tx, m2_hit_rx) = tokio::sync::mpsc::channel::<types::Hit>(10_000);
+
+            // M2 dispatcher — starts immediately, waits for M1 hits
+            let dispatch_cfg = exploit::dispatcher::DispatchConfig {
+                hits_input: String::new(), // unused in streaming mode
+                exploit_output: config.exploit_output.clone(),
+                concurrency: config.exploit_concurrency,
+                timeout_secs: config.exploit_timeout,
+            };
+            let engines = exploit::all_engines();
+            info!("[full] {} engines registered", engines.len());
+
+            let m2_task = tokio::spawn(
+                exploit::dispatcher::run_from_channel(m2_hit_rx, dispatch_cfg, engines)
+            );
+
+            // Tee task: receives M1 hits, forwards to M2 + optionally writes M1 hits file
+            let output_path = config.output_path.clone();
+            let (hit_tx, mut m1_rx) = tokio::sync::mpsc::channel::<types::Hit>(10_000);
+
+            let tee_task = tokio::spawn(async move {
+                use tokio::io::AsyncWriteExt;
+                let mut file_writer: Option<tokio::io::BufWriter<tokio::fs::File>> = None;
+                if let Some(ref path) = output_path {
+                    match tokio::fs::File::create(path).await {
+                        Ok(f) => file_writer = Some(tokio::io::BufWriter::new(f)),
+                        Err(e) => tracing::error!("cannot open output file: {e}"),
+                    }
+                }
+
+                while let Some(hit) = m1_rx.recv().await {
+                    // Forward to M2 (non-blocking: if M2 buffer full, drop rather than backpressure M1)
+                    let _ = m2_hit_tx.send(hit.clone()).await;
+
+                    // Optionally write M1 hits to file
+                    if let Some(ref mut fw) = file_writer {
+                        let mut line = serde_json::to_string(&hit).unwrap_or_default();
+                        line.push('\n');
+                        let _ = fw.write_all(line.as_bytes()).await;
+                    }
+                }
+                // m2_hit_tx dropped here → M2 knows M1 is done
+                if let Some(ref mut fw) = file_writer {
+                    let _ = fw.flush().await;
+                }
+            });
+
+            // M1 pipeline — sends hits to tee_task
+            pipeline::run(config.clone(), stats.clone(), hit_tx).await?;
+
+            // Wait for tee + M2 to drain
+            tee_task.await?;
+            if let Err(e) = m2_task.await? {
+                tracing::error!("[full] M2 error: {e}");
+            }
+
+            let total = stats.total.load(Ordering::Relaxed);
+            let hits  = stats.hits.load(Ordering::Relaxed);
+            info!(total, m1_hits = hits, "[done] full streaming pipeline complete");
+        }
+
+        _ => {
+            tracing::error!("unknown mode '{}'. Use: scan | exploit | full", config.mode);
         }
     }
 
     Ok(())
+}
+
+// ── Helper: spawn a hit writer task, return (Sender, JoinHandle) ─────────────
+fn spawn_hit_writer(
+    output_path: Option<std::path::PathBuf>,
+) -> (tokio::sync::mpsc::Sender<types::Hit>, tokio::task::JoinHandle<()>) {
+    let (hit_tx, mut hit_rx) = tokio::sync::mpsc::channel::<types::Hit>(10_000);
+    let handle = tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        let mut file_writer: Option<tokio::io::BufWriter<tokio::fs::File>> = None;
+        if let Some(ref path) = output_path {
+            match tokio::fs::File::create(path).await {
+                Ok(f) => file_writer = Some(tokio::io::BufWriter::new(f)),
+                Err(e) => tracing::error!("cannot open output file {:?}: {e}", path),
+            }
+        }
+        while let Some(hit) = hit_rx.recv().await {
+            let mut line = serde_json::to_string(&hit).unwrap_or_default();
+            line.push('\n');
+            if let Some(ref mut fw) = file_writer {
+                let _ = fw.write_all(line.as_bytes()).await;
+            } else {
+                print!("{}", line);
+            }
+        }
+        if let Some(ref mut fw) = file_writer {
+            let _ = fw.flush().await;
+        }
+    });
+    (hit_tx, handle)
 }
