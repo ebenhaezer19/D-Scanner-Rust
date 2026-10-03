@@ -12,7 +12,8 @@
 #   EXPLOIT_TIMEOUT   - Per-request timeout in seconds (default: 5)
 #   EXPLOIT_CONC      - Exploit concurrency (default: 700)
 #   LOG_LEVEL         - Log level: info, warn, debug (default: info)
-#   MASSDNS_THRESHOLD - Min targets to trigger massdns (default: 10000)
+#   FORCE_MASSDNS     - Force massdns mode (default: false)
+#   MASSDNS_THRESHOLD - Min targets for auto-massdns (default: 50000)
 #   RESOLVERS         - Path to resolvers file (default: /tmp/resolvers_raw.txt)
 
 set -e
@@ -31,7 +32,7 @@ CONCURRENCY="${CONCURRENCY:-2000}"
 EXPLOIT_TIMEOUT="${EXPLOIT_TIMEOUT:-5}"
 EXPLOIT_CONC="${EXPLOIT_CONC:-700}"
 LOG_LEVEL="${LOG_LEVEL:-info}"
-MASSDNS_THRESHOLD="${MASSDNS_THRESHOLD:-10000}"
+MASSDNS_THRESHOLD="${MASSDNS_THRESHOLD:-50000}"
 RESOLVERS="${RESOLVERS:-/tmp/resolvers_raw.txt}"
 
 # Find dreks binary
@@ -70,6 +71,9 @@ echo -e "${GREEN}[*]${NC} Output: $OUTPUT"
 echo ""
 
 # Decision logic for massdns
+# Based on testing: Direct mode finds MORE RCE than massdns mode
+# Massdns skips IP addresses and can miss domains due to DNS issues
+# Only use massdns for VERY large lists (>50k) AND when explicitly enabled
 USE_MASSDNS=false
 MASSDNS_AVAILABLE=false
 
@@ -78,12 +82,13 @@ if command -v massdns &> /dev/null && [ -f "$RESOLVERS" ]; then
 fi
 
 # Use massdns only if:
-# 1. massdns is available
-# 2. More than MASSDNS_THRESHOLD targets
-# 3. Less than 20% are IP addresses
-if [ "$MASSDNS_AVAILABLE" = true ] && \
-   [ "$TOTAL_LINES" -ge "$MASSDNS_THRESHOLD" ] && \
-   [ "$IP_COUNT" -lt $((TOTAL_LINES / 5)) ]; then
+# 1. FORCE_MASSDNS=true is set, OR
+# 2. More than 50k targets AND <10% are IPs (very conservative)
+if [ "${FORCE_MASSDNS:-false}" = "true" ]; then
+    USE_MASSDNS=true
+elif [ "$MASSDNS_AVAILABLE" = true ] && \
+     [ "$TOTAL_LINES" -ge 50000 ] && \
+     [ "$IP_COUNT" -lt $((TOTAL_LINES / 10)) ]; then
     USE_MASSDNS=true
 fi
 
