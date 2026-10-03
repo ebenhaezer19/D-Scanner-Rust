@@ -14,6 +14,7 @@
 #   LOG_LEVEL         - Log level: info, warn, debug (default: info)
 #   FORCE_MASSDNS     - Force massdns mode (default: false)
 #   MASSDNS_THRESHOLD - Min targets for auto-massdns (default: 50000)
+#   SKIP_DEAD_CHECK   - Skip dead target pre-filter (default: false)
 #   RESOLVERS         - Path to resolvers file (default: /tmp/resolvers_raw.txt)
 
 set -e
@@ -131,6 +132,10 @@ if [ "$USE_MASSDNS" = true ]; then
     echo ""
 
     echo -e "${GREEN}[*]${NC} Starting scan with --skip-dns..."
+    DEAD_CHECK_FLAG=""
+    if [ "${SKIP_DEAD_CHECK:-false}" = "true" ]; then
+        DEAD_CHECK_FLAG="--skip-dead-check"
+    fi
     "$DREKS" \
         --mode full \
         --input "$TMPDIR/combined.txt" \
@@ -139,7 +144,8 @@ if [ "$USE_MASSDNS" = true ]; then
         --concurrency "$CONCURRENCY" \
         --exploit-concurrency "$EXPLOIT_CONC" \
         --exploit-timeout "$EXPLOIT_TIMEOUT" \
-        --log-level "$LOG_LEVEL"
+        --log-level "$LOG_LEVEL" \
+        $DEAD_CHECK_FLAG
 else
     if [ "$MASSDNS_AVAILABLE" = false ]; then
         echo -e "${YELLOW}[*]${NC} Mode: Direct (massdns not available)"
@@ -149,6 +155,10 @@ else
     echo ""
 
     echo -e "${GREEN}[*]${NC} Starting scan..."
+    DEAD_CHECK_FLAG=""
+    if [ "${SKIP_DEAD_CHECK:-false}" = "true" ]; then
+        DEAD_CHECK_FLAG="--skip-dead-check"
+    fi
     "$DREKS" \
         --mode full \
         --input "$INPUT" \
@@ -156,7 +166,8 @@ else
         --concurrency "$CONCURRENCY" \
         --exploit-concurrency "$EXPLOIT_CONC" \
         --exploit-timeout "$EXPLOIT_TIMEOUT" \
-        --log-level "$LOG_LEVEL"
+        --log-level "$LOG_LEVEL" \
+        $DEAD_CHECK_FLAG
 fi
 
 END_TIME=$(date +%s)

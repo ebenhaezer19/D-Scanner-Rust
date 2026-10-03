@@ -99,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
                         exploit_output: config.exploit_output.clone(),
                         concurrency: config.exploit_concurrency,
                         timeout_secs: config.exploit_timeout,
+                        skip_dead_check: config.skip_dead_check,
                     };
 
                     if let Err(e) = exploit::dispatcher::run(dispatch_cfg, engines).await {
@@ -124,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
                 exploit_output: config.exploit_output.clone(),
                 concurrency: config.exploit_concurrency,
                 timeout_secs: config.exploit_timeout,
+                skip_dead_check: config.skip_dead_check,
             };
             let engines = exploit::all_engines_with_timeout(config.exploit_timeout);
             info!("[full] {} engines registered (timeout={}s)", engines.len(), config.exploit_timeout);

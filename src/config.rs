@@ -80,6 +80,12 @@ pub struct Cli {
     /// Recommended: 10-15s for balanced speed/coverage.
     #[arg(long, default_value_t = 15)]
     pub exploit_timeout: u64,
+
+    /// Skip dead target pre-filter (Phase 3E).
+    /// By default, a quick 1-2s probe checks if target is alive before exploit.
+    /// Use this flag to disable the pre-filter (for already-known-live targets).
+    #[arg(long, default_value_t = false)]
+    pub skip_dead_check: bool,
 }
 
 /// Runtime config derived from CLI + any JSON overrides.
@@ -102,6 +108,7 @@ pub struct Config {
     pub exploit_output: Option<String>,
     pub exploit_concurrency: usize,
     pub exploit_timeout: u64,
+    pub skip_dead_check: bool,
 }
 
 impl Config {
@@ -132,6 +139,7 @@ impl Config {
             exploit_output: cli.exploit_output.clone(),
             exploit_concurrency: cli.exploit_concurrency,
             exploit_timeout: cli.exploit_timeout,
+            skip_dead_check: cli.skip_dead_check,
         }
     }
 }
