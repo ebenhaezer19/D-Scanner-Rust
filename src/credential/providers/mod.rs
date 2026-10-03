@@ -19,3 +19,10 @@ pub mod gitlab;
 pub mod livewire;
 pub mod langflow;
 pub mod wordpress;
+// New providers for JS exposure
+pub mod firebase;
+pub mod twilio;
+pub mod slack;
+pub mod discord;
+pub mod telegram;
+pub mod mapbox;

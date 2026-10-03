@@ -29,26 +29,39 @@ pub trait CredentialProvider: Send + Sync {
 /// Global provider registry — all providers registered here.
 static REGISTRY: Lazy<Vec<Box<dyn CredentialProvider>>> = Lazy::new(|| {
     vec![
+        // AI/LLM providers
         Box::new(providers::openai::OpenAIProvider),
-        Box::new(providers::stripe::StripeProvider),
-        Box::new(providers::aws::AwsProvider),
-        Box::new(providers::github::GitHubProvider),
-        Box::new(providers::sendgrid::SendGridProvider),
-        Box::new(providers::resend::ResendProvider),
         Box::new(providers::anthropic::AnthropicProvider),
-        Box::new(providers::brevo::BrevoProvider),
-        Box::new(providers::mailgun::MailgunProvider),
-        Box::new(providers::huggingface::HuggingFaceProvider),
         Box::new(providers::groq::GroqProvider),
         Box::new(providers::xai::XaiProvider),
         Box::new(providers::openrouter::OpenRouterProvider),
         Box::new(providers::replicate::ReplicateProvider),
         Box::new(providers::cerebras::CerebrasProvider),
         Box::new(providers::perplexity::PerplexityProvider),
+        Box::new(providers::huggingface::HuggingFaceProvider),
+        // Payment
+        Box::new(providers::stripe::StripeProvider),
+        // Cloud
+        Box::new(providers::aws::AwsProvider),
+        Box::new(providers::firebase::FirebaseProvider),      // Google Firebase
+        Box::new(providers::mapbox::MapboxProvider),          // Mapbox
+        // Code hosting
+        Box::new(providers::github::GitHubProvider),
         Box::new(providers::gitlab::GitLabProvider),
-        Box::new(providers::livewire::LivewireProvider),  // Livewire v3 pre-qualifier for M2
-        Box::new(providers::langflow::LangflowProvider),  // Langflow pre-qualifier for M2 (CVE-2025-3248)
-        Box::new(providers::wordpress::WordPressProvider), // WordPress pre-qualifier for M2 wp2shell
+        // Email
+        Box::new(providers::sendgrid::SendGridProvider),
+        Box::new(providers::resend::ResendProvider),
+        Box::new(providers::brevo::BrevoProvider),
+        Box::new(providers::mailgun::MailgunProvider),
+        // Communication
+        Box::new(providers::twilio::TwilioProvider),          // Twilio SMS
+        Box::new(providers::slack::SlackProvider),            // Slack tokens/webhooks
+        Box::new(providers::discord::DiscordProvider),        // Discord tokens/webhooks
+        Box::new(providers::telegram::TelegramProvider),      // Telegram bot tokens
+        // M2 pre-qualifiers
+        Box::new(providers::livewire::LivewireProvider),      // Livewire v3 pre-qualifier for M2
+        Box::new(providers::langflow::LangflowProvider),      // Langflow pre-qualifier for M2 (CVE-2025-3248)
+        Box::new(providers::wordpress::WordPressProvider),    // WordPress pre-qualifier for M2 wp2shell
     ]
 });
 
