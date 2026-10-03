@@ -235,6 +235,26 @@ massdns -r resolvers.txt -o S domains.txt > resolved.txt
 
 ---
 
+## Milestone Status
+
+| Milestone | Description | Status |
+|-----------|-------------|--------|
+| **M1** | Rust core: pipeline, DNS, HTTP, credential engine (17 providers) | ✅ Done |
+| **M2** | Exploit engines: livewire2shell, laravel2shell, langflow2shell, wp2shell | 🔄 In Progress |
+| M3 | Additional engines: react2shell, lib scanner, advanced recon | Pending |
+| M4 | Controller bridge, WebSocket, Telegram relay | Pending |
+| M5 | Docker deploy, benchmark suite, client documentation | Pending |
+
+### M2 Progress
+- [x] livewire2shell - CVE-2024-47823 (Livewire v3 RCE)
+- [x] laravel2shell - Debug mode exploit
+- [x] langflow2shell - CVE-2025-3248 (Langflow RCE)
+- [x] wp2shell - WordPress recon + CVE-2024-25600 (Bricks RCE)
+- [ ] Credential verification module
+- [ ] Additional WordPress CVEs
+
+---
+
 ## License
 
 Private. All rights reserved.
