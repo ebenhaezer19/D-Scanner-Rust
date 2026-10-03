@@ -92,6 +92,11 @@ pub struct Cli {
     /// Warning: This makes real API requests to verify credentials.
     #[arg(long, default_value_t = false)]
     pub verify_creds: bool,
+
+    /// Enable path scanner to probe sensitive paths (.env, .git, etc.)
+    /// Scans ~50 common paths per target. May reduce throughput.
+    #[arg(long, default_value_t = false)]
+    pub path_scan: bool,
 }
 
 /// Runtime config derived from CLI + any JSON overrides.
@@ -116,6 +121,7 @@ pub struct Config {
     pub exploit_timeout: u64,
     pub skip_dead_check: bool,
     pub verify_creds: bool,
+    pub path_scan: bool,
 }
 
 impl Config {
@@ -148,6 +154,7 @@ impl Config {
             exploit_timeout: cli.exploit_timeout,
             skip_dead_check: cli.skip_dead_check,
             verify_creds: cli.verify_creds,
+            path_scan: cli.path_scan,
         }
     }
 }

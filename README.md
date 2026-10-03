@@ -143,6 +143,8 @@ time ./target/release/dreks --input targets.txt --mode full \
 | `--exploit-concurrency` | `700` | Parallel exploit attempts |
 | `--exploit-timeout` | `5` | Per-request timeout (seconds). Total cap = timeout × 2 |
 | `--skip-dead-check` | false | Skip dead target pre-filter |
+| `--verify-creds` | false | Verify found credentials via API calls |
+| `--path-scan` | false | Enable sensitive path scanner (~50 paths/target) |
 
 ---
 
@@ -169,6 +171,18 @@ time ./target/release/dreks --input targets.txt --mode full \
 ### laravel2shell
 - **Target:** Laravel apps with debug mode
 - **Detection:** Debug page, env exposure
+
+### path_scanner
+- **Target:** All HTTP/HTTPS targets (opt-in with `--path-scan`)
+- **Scans:** 50+ sensitive paths
+- **Categories:**
+  - Config files (`.env`, `config.php`, `wp-config.php.bak`)
+  - VCS exposure (`.git/config`, `.svn/entries`)
+  - Debug/Admin (`phpinfo.php`, `adminer.php`, `/_profiler/`)
+  - Database dumps (`dump.sql`, `backup.sql`)
+  - API docs (`swagger.json`, `graphql`)
+  - Backup files (`backup.zip`, `site.zip`)
+  - Cloud configs (`.aws/credentials`, `docker-compose.yml`)
 
 ---
 
@@ -241,8 +255,8 @@ massdns -r resolvers.txt -o S domains.txt > resolved.txt
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
-| **M1** | Rust core: pipeline, DNS, HTTP, credential engine (17 providers) | ✅ Done |
-| **M2** | Exploit engines: livewire2shell, laravel2shell, langflow2shell, wp2shell | 🔄 In Progress |
+| **M1** | Rust core: pipeline, DNS, HTTP, credential engine (26 providers) | ✅ Done |
+| **M2** | Exploit engines: livewire2shell, laravel2shell, langflow2shell, wp2shell, path_scanner | ✅ Done |
 | M3 | Additional engines: react2shell, lib scanner, advanced recon | Pending |
 | M4 | Controller bridge, WebSocket, Telegram relay | Pending |
 | M5 | Docker deploy, benchmark suite, client documentation | Pending |
@@ -254,6 +268,7 @@ massdns -r resolvers.txt -o S domains.txt > resolved.txt
 - [x] wp2shell - WordPress recon + CVE-2024-25600 (Bricks RCE)
 - [x] Credential verification module (OpenAI, Anthropic, Stripe, GitHub, etc.)
 - [x] Additional WordPress CVEs (30+ plugins tracked)
+- [x] Path scanner - 50+ sensitive paths (.env, .git, backups, etc.)
 
 ### WordPress CVEs Tracked
 | CVE | Plugin | Type |

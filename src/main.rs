@@ -91,8 +91,8 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Some(hits_file) => {
                     info!("[exploit] loading engines (file mode)");
-                    let engines = exploit::all_engines_with_timeout(config.exploit_timeout);
-                    info!("[exploit] {} engines registered", engines.len());
+                    let engines = exploit::all_engines_with_config(config.exploit_timeout, config.path_scan);
+                    info!("[exploit] {} engines registered (path_scan={})", engines.len(), config.path_scan);
 
                     let dispatch_cfg = exploit::dispatcher::DispatchConfig {
                         hits_input: hits_file,
@@ -127,8 +127,8 @@ async fn main() -> anyhow::Result<()> {
                 timeout_secs: config.exploit_timeout,
                 skip_dead_check: config.skip_dead_check,
             };
-            let engines = exploit::all_engines_with_timeout(config.exploit_timeout);
-            info!("[full] {} engines registered (timeout={}s)", engines.len(), config.exploit_timeout);
+            let engines = exploit::all_engines_with_config(config.exploit_timeout, config.path_scan);
+            info!("[full] {} engines registered (timeout={}s, path_scan={})", engines.len(), config.exploit_timeout, config.path_scan);
 
             let m2_task = tokio::spawn(
                 exploit::dispatcher::run_from_channel(m2_hit_rx, dispatch_cfg, engines)
