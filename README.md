@@ -188,12 +188,14 @@ time ./target/release/dreks --input targets.txt --mode full \
 
 ## Credential Providers (M1)
 
-17 providers implemented:
-- **AI:** OpenAI, Anthropic, Groq, xAI, OpenRouter, Replicate, Cerebras, Perplexity, HuggingFace
+26 providers implemented:
+- **AI/LLM:** OpenAI, Anthropic, Groq, xAI, OpenRouter, Replicate, Cerebras, Perplexity, HuggingFace
 - **Payment:** Stripe
-- **Cloud:** AWS
+- **Cloud:** AWS, Firebase (Google), Mapbox
 - **Code:** GitHub, GitLab
 - **Email:** SendGrid, Resend, Brevo, Mailgun
+- **Communication:** Twilio (SMS), Slack (tokens/webhooks), Discord (tokens/webhooks), Telegram (bot tokens)
+- **Pre-qualifiers:** Livewire, Langflow, WordPress
 
 ---
 
