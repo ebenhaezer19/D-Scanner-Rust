@@ -250,8 +250,28 @@ massdns -r resolvers.txt -o S domains.txt > resolved.txt
 - [x] laravel2shell - Debug mode exploit
 - [x] langflow2shell - CVE-2025-3248 (Langflow RCE)
 - [x] wp2shell - WordPress recon + CVE-2024-25600 (Bricks RCE)
-- [ ] Credential verification module
-- [ ] Additional WordPress CVEs
+- [x] Credential verification module (OpenAI, Anthropic, Stripe, GitHub, etc.)
+- [x] Additional WordPress CVEs (30+ plugins tracked)
+
+### WordPress CVEs Tracked
+| CVE | Plugin | Type |
+|-----|--------|------|
+| CVE-2024-27956 | WP Automatic | SQLi to RCE |
+| CVE-2024-25600 | Bricks Builder | Unauth RCE |
+| CVE-2023-6553 | Backup Migration | Unauth RCE |
+| CVE-2024-0757 | Articulate Content | File upload RCE |
+| CVE-2025-34085 | Simple File List | File upload RCE |
+| CVE-2024-7627 | Bit File Manager | Race condition RCE |
+| CVE-2025-3515 | CF7 Multi Upload | File upload RCE |
+| CVE-2025-32118 | CMP Coming Soon | RCE |
+| CVE-2024-28000 | LiteSpeed Cache | Privilege escalation |
+| CVE-2024-10924 | Really Simple SSL | Auth bypass |
+
+### Credential Verification
+```bash
+# Credentials found by M1 can be verified
+# Supported: OpenAI, Anthropic, Groq, Stripe, GitHub, GitLab, SendGrid, HuggingFace
+```
 
 ---
 
