@@ -17,3 +17,4 @@ pub mod cerebras;
 pub mod perplexity;
 pub mod gitlab;
 pub mod livewire;
+pub mod langflow;
