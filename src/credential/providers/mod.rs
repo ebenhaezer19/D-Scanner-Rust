@@ -18,3 +18,4 @@ pub mod perplexity;
 pub mod gitlab;
 pub mod livewire;
 pub mod langflow;
+pub mod wordpress;
