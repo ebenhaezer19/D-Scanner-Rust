@@ -136,6 +136,7 @@ async fn main() -> anyhow::Result<()> {
 
             // Tee task: receives M1 hits, forwards to M2 + optionally writes M1 hits file
             let output_path = config.output_path.clone();
+            let verify_creds = config.verify_creds;
             let (hit_tx, mut m1_rx) = tokio::sync::mpsc::channel::<types::Hit>(10_000);
 
             let tee_task = tokio::spawn(async move {
@@ -148,9 +149,30 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
 
+                // Verification tasks run in background
+                let mut verify_tasks = tokio::task::JoinSet::new();
+
                 while let Some(hit) = m1_rx.recv().await {
                     // Forward to M2 (non-blocking: if M2 buffer full, drop rather than backpressure M1)
                     let _ = m2_hit_tx.send(hit.clone()).await;
+
+                    // Optionally verify credentials (runs in parallel, doesn't block)
+                    if verify_creds && !hit.provider.is_empty() && !hit.value.is_empty() {
+                        let provider = hit.provider.clone();
+                        let value = hit.value.clone();
+                        verify_tasks.spawn(async move {
+                            if let Some(result) = exploit::verify_credential(&provider, &value).await {
+                                if result.valid {
+                                    tracing::info!(
+                                        "[cred_verify] VALID {} credential: {}...{}",
+                                        result.provider,
+                                        &result.value[..8.min(result.value.len())],
+                                        result.details.unwrap_or_default()
+                                    );
+                                }
+                            }
+                        });
+                    }
 
                     // Optionally write M1 hits to file
                     if let Some(ref mut fw) = file_writer {
@@ -159,6 +181,10 @@ async fn main() -> anyhow::Result<()> {
                         let _ = fw.write_all(line.as_bytes()).await;
                     }
                 }
+
+                // Wait for verification tasks to complete
+                while verify_tasks.join_next().await.is_some() {}
+
                 // m2_hit_tx dropped here → M2 knows M1 is done
                 if let Some(ref mut fw) = file_writer {
                     let _ = fw.flush().await;

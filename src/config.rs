@@ -87,6 +87,11 @@ pub struct Cli {
     /// Use this flag to disable the pre-filter (for already-known-live targets).
     #[arg(long, default_value_t = false)]
     pub skip_dead_check: bool,
+
+    /// Verify found credentials via API calls (OpenAI, Stripe, GitHub, etc.)
+    /// Warning: This makes real API requests to verify credentials.
+    #[arg(long, default_value_t = false)]
+    pub verify_creds: bool,
 }
 
 /// Runtime config derived from CLI + any JSON overrides.
@@ -110,6 +115,7 @@ pub struct Config {
     pub exploit_concurrency: usize,
     pub exploit_timeout: u64,
     pub skip_dead_check: bool,
+    pub verify_creds: bool,
 }
 
 impl Config {
@@ -141,6 +147,7 @@ impl Config {
             exploit_concurrency: cli.exploit_concurrency,
             exploit_timeout: cli.exploit_timeout,
             skip_dead_check: cli.skip_dead_check,
+            verify_creds: cli.verify_creds,
         }
     }
 }
