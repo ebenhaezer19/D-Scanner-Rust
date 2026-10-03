@@ -71,14 +71,15 @@ pub struct Cli {
     #[arg(long)]
     pub exploit_output: Option<String>,
 
-    /// Max concurrent exploit attempts (exploit engines are slow).
-    #[arg(long, default_value_t = 10)]
+    /// Max concurrent exploit attempts.
+    /// Formula: concurrency = target_tps × avg_slot_time
+    /// For 126+ t/s with 10s avg slot: need ~1260 concurrency.
+    #[arg(long, default_value_t = 700)]
     pub exploit_concurrency: usize,
 
-    /// Per-request timeout for exploit engine (seconds).
-    /// Lower = faster dead-target skip, higher = more tolerance for slow targets.
-    /// Recommended: 10-15s for balanced speed/coverage.
-    #[arg(long, default_value_t = 15)]
+    /// Per-request timeout for exploit engines (seconds).
+    /// Total cap = timeout × 2. For 126+ t/s, use 5s (cap=10s).
+    #[arg(long, default_value_t = 5)]
     pub exploit_timeout: u64,
 
     /// Skip dead target pre-filter (Phase 3E).
